@@ -90,28 +90,26 @@ If you must modify a page that you own, interfaces are the most appropriate cust
 
 If you must modify a page that you don't own, you should avoid using interfaces, because that approach will require over-layering. Instead, you should do the customization through extensions and event subscriptions. To use this approach, implement an extension class that subscribes to the **OnIntializing** event of the page that you're customizing. From this event handler, get the **OfficeFormRunHelper** for the page, and subscribe to its **OfficeMenuInitializing** event. The following example shows sample code for this approach.
 
-```xpp
-public static class MyForm_Extension
-{
-    [FormEventHandler(formStr(MyForm), FormEventType::Initializing)]
-    public static void ExportToExcel_DataEntityCustom_OnInitializing(xFormRun sender, FormEventArgs e)
+    public static class MyForm_Extension
     {
-        FormRun formRun = sender as FormRun;
-        if (formRun)
+        [FormEventHandler(formStr(MyForm), FormEventType::Initializing)]
+        public static void ExportToExcel_DataEntityCustom_OnInitializing(xFormRun sender, FormEventArgs e)
         {
-            OfficeFormRunHelper officeHelper = formRun.officeHelper();
-            if (officeHelper)
+            FormRun formRun = sender as FormRun;
+            if (formRun)
             {
-                officeHelper.OfficeMenuInitializing += eventhandler(MyForm_Extension::officeMenuInitializingHandler);
+                OfficeFormRunHelper officeHelper = formRun.officeHelper();
+                if (officeHelper)
+                {
+                    officeHelper.OfficeMenuInitializing += eventhandler(MyForm_Extension::officeMenuInitializingHandler);
+                }
             }
         }
+        private static void officeMenuInitializingHandler(FormRun _formRun, OfficeMenuEventArgs _eventArgs)
+        {
+            // Modify the OfficeMenuOptions available on the OfficeMenuEventArgs.menuOptions() as necessary.
+        }
     }
-    private static void officeMenuInitializingHandler(FormRun _formRun, OfficeMenuEventArgs _eventArgs)
-    {
-        // Modify the OfficeMenuOptions available on the OfficeMenuEventArgs.menuOptions() as necessary.
-    }
-}
-```
 
 ## Typical customization scenarios
 The following examples assume that the **\_menuOptions** variable contains the **OfficeMenuOptions** instance that you're customizing.
@@ -120,88 +118,75 @@ The following examples assume that the **\_menuOptions** variable contains the *
 
 Many of the menu items on the **Open in Office** menu are added automatically, based on the data entities that are considered for the page. However, in some cases, the algorithm that is used to determine the set of data entities might not determine the correct set. To modify the set of data entities that is considered for the page, you can use the **OfficeMenuOptions** that is available from either the **OfficeIMenuCustomizer.customizeMenuOptions** method or the **OfficeFormRunHelper.OfficeMenuInitializing** delegate.
 
-```xpp
-// Add an entity to the list
-OfficeMenuDataEntityOptions entityOptions  = OfficeMenuDataEntityOptions::construct(tableStr(MyEntity));
-_menuOptions.dataEntityOptions().addEnd(entityOptions);
-// Remove an entity from the list
-ListIterator dataEntityOptionsIterator = new ListIterator(_menuOptions.dataEntityOptions());
-while (dataEntityOptionsIterator.more())
-{
-    OfficeMenuDataEntityOptions dataEntityOptions = dataEntityOptionsIterator.value();
-    if (dataEntityOptions.dataEntityName() == tableStr(MyOtherEntity))
+    // Add an entity to the list
+    OfficeMenuDataEntityOptions entityOptions  = OfficeMenuDataEntityOptions::construct(tableStr(MyEntity));
+    _menuOptions.dataEntityOptions().addEnd(entityOptions);
+    // Remove an entity from the list
+    ListIterator dataEntityOptionsIterator = new ListIterator(_menuOptions.dataEntityOptions());
+    while (dataEntityOptionsIterator.more())
     {
-        dataEntityOptionsIterator.delete();
+        OfficeMenuDataEntityOptions dataEntityOptions = dataEntityOptionsIterator.value();
+        if (dataEntityOptions.dataEntityName() == tableStr(MyOtherEntity))
+        {
+            dataEntityOptionsIterator.delete();
+        }
+        else
+        {
+            dataEntityOptionsIterator.next();
+        }
     }
-    else
-    {
-        dataEntityOptionsIterator.next();
-    }
-}
-```
 
 ### Specifying the default data entity–related options that are included
 
 The **OfficeMenuDataEntityOptions** class lets you specify whether to include a menu item for a default export or a menu item that is related to a document template.
 
-```xpp
-// Find the entity options if they were included by default.
-OfficeMenuDataEntityOptions entityOptions = _menuOptions.getOptionsForEntity(tableStr(MyEntity));
-if (!entityOptions)
-{
-    // The entity options were not included. Add them.
-    entityOptions = OfficeMenuDataEntityOptions::construct(tableStr(MyEntity);
-    _menuOptions.dataEntityOptions().addEnd(entityOptions);
-}
-entityOptions.includeDefault(false); // Don't include the default export menu item.
-entityOptions.includeTemplates(false); // Don’t include Document Template related menu items.
-```
+    // Find the entity options if they were included by default.
+    OfficeMenuDataEntityOptions entityOptions = _menuOptions.getOptionsForEntity(tableStr(MyEntity));
+    if (!entityOptions)
+    {
+        // The entity options were not included. Add them.
+        entityOptions = OfficeMenuDataEntityOptions::construct(tableStr(MyEntity);
+        _menuOptions.dataEntityOptions().addEnd(entityOptions);
+    }
+    entityOptions.includeDefault(false); // Don't include the default export menu item.
+    entityOptions.includeTemplates(false); // Don’t include Document Template related menu items.
 
 ### Adding a custom export menu item – Generating a workbook
 
 To explicitly add a menu item, you must add it to the **OfficeMenuOptions.customMenuItems()** list. To add a menu item that corresponds to a workbook that is generated at run time, use an **OfficeGeneratedExportMenuItem**.
 
-```xpp
-OfficeGeneratedExportMenuItem menuItem = OfficeGeneratedExportMenuItem::construct(tableStr(MyEntity), "MyCustomGeneratedExportId");
-menuItem.setDisplayNameWithDataEntity();
-_menuOptions.customMenuItems().addEnd(menuItem);
-```
+    OfficeGeneratedExportMenuItem menuItem = OfficeGeneratedExportMenuItem::construct(tableStr(MyEntity), "MyCustomGeneratedExportId");
+    menuItem.setDisplayNameWithDataEntity();
+    _menuOptions.customMenuItems().addEnd(menuItem);
 
 To define what is actually exported, use an **ExportToExcelDataEntityContext**. The method for specifying the **ExportToExcelDataEntityContext** depends on whether you're using interfaces or extensions and event subscriptions to customize the **Open in Office** menu.
-
 
 #### Using interfaces
 
 If you're using interfaces, you must implement the **OfficeIGeneratedWorkbookCustomExporter.getDataEntityContext()** method.
 
-```xpp
-public ExportToExcelDataEntityContext getDataEntityContext(OfficeGeneratedExportMenuItem _menuItem)
-{
-    ExportToExcelDataEntityContext context = null;
-    if (_menuItem.id() == "MyCustomGeneratedExportId")
+    public ExportToExcelDataEntityContext getDataEntityContext(OfficeGeneratedExportMenuItem _menuItem)
     {
-        context = ExportToExcelDataEntityContext::construct(tableStr(MyEntity), tableFieldGroupStr(MyEntity, MyFieldGroup);
+        ExportToExcelDataEntityContext context = null;
+        if (_menuItem.id() == "MyCustomGeneratedExportId")
+        {
+            context = ExportToExcelDataEntityContext::construct(tableStr(MyEntity), tableFieldGroupStr(MyEntity, MyFieldGroup);
+        }
+        return context;
     }
-    return context;
-}
-```
 
 #### Using extensions and event subscriptions
 
 If you're using extensions and event subscriptions, the **OfficeGeneratedExportMenuItem.getDataEntityContext** delegate should be subscribed to before you add the menu item to the **OfficeMenuOptions.customMenuItems()** list. The code for the event handler should resemble the preceding code for the interface. The following example shows how to do the event subscription.
 
-```xpp
-menuItem.getDataEntityContext += eventhandler(MyForm_Extension::getDataEntityContextHandler);
-```
+    menuItem.getDataEntityContext += eventhandler(MyForm_Extension::getDataEntityContextHandler);
 
 ### Adding a custom export menu item – Specifying a document template
 
 To explicitly add a menu item, you must add it to the **OfficeMenuOptions.customMenuItems()** list. To add a menu item that corresponds to a Document Template record, use an **OfficeTemplateExportMenuItem**.
 
-```xpp
-OfficeTemplateExportMenuItem menuItem = OfficeTemplateExportMenuItem::construct(OfficeAppApplicationType::Excel, "MyTemplateId", "MyCustomTemplateExportId");
-_menuOptions.customMenuItems().addEnd(menuItem);
-```
+    OfficeTemplateExportMenuItem menuItem = OfficeTemplateExportMenuItem::construct(OfficeAppApplicationType::Excel, "MyTemplateId", "MyCustomTemplateExportId");
+    _menuOptions.customMenuItems().addEnd(menuItem);
 
 To modify the template at run time, you can supply a set of initial filters. These filters will replace any filters in the template for the specified data entities. Additionally, you can modify filters and specify many settings by using **WorkbookSettingsManager**. The following sections show examples.
 
@@ -209,46 +194,42 @@ To modify the template at run time, you can supply a set of initial filters. The
 
 If you're using interfaces, you must implement the **OfficeITemplateCustomExporter.getInitialTemplateFilters()** and **OfficeITemplateCustomExporter.updateTemplateSettings()** methods.
 
-```xpp
-public Map getInitialTemplateFilters(OfficeTemplateExportMenuItem _menuItem)
-{
-    Map initialFilters = new Map(Types::String, Types::Class);
-	if (_menuItem.id() == "MyCustomTemplateExportId")
-	{
-		// Add an initial filter.
-		ExportToExcelFilterTreeBuilder bldr = new ExportToExcelFilterTreeBuilder(_menuItem.dataEntityName());
-		FilterNode filter = // create the filter…
-		initialFilters.insert(_menuItem.dataEntityName(), filter);
-	}
-	return initialFilters;
-}
-public void updateTemplateSettings(OfficeTemplateExportMenuItem _menuItem, Microsoft.Dynamics.Platform.Integration.Office.SettingsManager _settingsManager)
-{
-	if (_menuItem.id() == "MyCustomTemplateExportId")
-	{
-		// Set a new filter.
-		ExportToExcelFilterTreeBuilder bldr = new ExportToExcelFilterTreeBuilder(_menuItem.dataEntityName());
-		FilterNode filter = // create the filter…
-		Excel.WorkbookSettingsManager workbookSettingsManager = _settingsManager as Excel.WorkbookSettingsManager;
-		workbookSettingsManager.SetEntityFilter(entityMetadata.PublicEntityName, filter);
-		// Adjust settings.
-		DataConnectorAppletSettings settings = settingsManager.DataConnectorSettings;
-		DataConnectorAppletUserOptions options = settings.DataOptions;
-		options.RefreshOnOpen = true;
-		options.EnableDesign = false;
-		workbookSettingsManager.DataConnectorSettings = settings;
-	}
-}
-```
+    public Map getInitialTemplateFilters(OfficeTemplateExportMenuItem _menuItem)
+    {
+        Map initialFilters = new Map(Types::String, Types::Class);
+        if (_menuItem.id() == "MyCustomTemplateExportId")
+        {
+            // Add an initial filter.
+            ExportToExcelFilterTreeBuilder bldr = new ExportToExcelFilterTreeBuilder(_menuItem.dataEntityName());
+            FilterNode filter = // create the filter…
+            initialFilters.insert(_menuItem.dataEntityName(), filter);
+        }
+        return initialFilters;
+    }
+    public void updateTemplateSettings(OfficeTemplateExportMenuItem _menuItem, Microsoft.Dynamics.Platform.Integration.Office.SettingsManager _settingsManager)
+    {
+        if (_menuItem.id() == "MyCustomTemplateExportId")
+        {
+            // Set a new filter.
+            ExportToExcelFilterTreeBuilder bldr = new ExportToExcelFilterTreeBuilder(_menuItem.dataEntityName());
+            FilterNode filter = // create the filter…
+            Excel.WorkbookSettingsManager workbookSettingsManager = _settingsManager as Excel.WorkbookSettingsManager;
+            workbookSettingsManager.SetEntityFilter(entityMetadata.PublicEntityName, filter);
+            // Adjust settings.
+            DataConnectorAppletSettings settings = settingsManager.DataConnectorSettings;
+            DataConnectorAppletUserOptions options = settings.DataOptions;
+            options.RefreshOnOpen = true;
+            options.EnableDesign = false;
+            workbookSettingsManager.DataConnectorSettings = settings;
+        }
+    }
 
 #### Using extensions and event subscriptions
 
 If you're using extensions and event subscriptions, the **OfficeTemplateExportMenuItem.getInitialTemplateFilters** and **OfficeTemplateExportMenuItem.updateTemplateSettings** delegates should be subscribed to before you add the menu item to the **OfficeMenuOptions.customMenuItems()** list. The code for the event handlers should resemble the preceding code for the interface. The following example shows how to do the event subscription.
 
-```xpp
-menuItem.getInitialTemplateFilters += eventhandler(MyForm_Extension::getInitialTemplateFiltersHander);
-menuItem.updateTemplateSettings += eventhandler(MyForm_Extension::updateTemplateSettingsHandler);
-```
+    menuItem.getInitialTemplateFilters += eventhandler(MyForm_Extension::getInitialTemplateFiltersHander);
+    menuItem.updateTemplateSettings += eventhandler(MyForm_Extension::updateTemplateSettingsHandler);
 
 ## Additional customizations
 The following customizations let you modify the contents of the **Open in Office** menu for a page without using interfaces or extensions and event handlers.
@@ -265,13 +246,11 @@ To rename the **Export to Excel** menu item that is related to a grid, set the *
 
 Integration scenarios require that some data entities be publicly available via the OData Service. However, it isn't always appropriate that these data entities appear on the **Open in Office** menu by default. In this scenario, you can add the **OfficeMenuOmit** code attribute to the entity declaration.
 
-```xpp
-[OfficeMenuOmit]
-public class MyEntity extends common
-{
-	// Entity code…
-}
-```
+    [OfficeMenuOmit]
+    public class MyEntity extends common
+    {
+        // Entity code…
+    }
 
 After you make this change, by default, the entity won't appear on the **Open in Office** menu on pages that have a matching root data source. However, if the entity should be added to a specific page, you can use other customization mechanisms to add it.
 
